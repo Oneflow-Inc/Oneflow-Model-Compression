@@ -1,17 +1,25 @@
 # Copyright (c) The Tianshu Platform Authors.
 # Licensed under the Apache License
 
-# pretrained model dir
-# PRETRAINED_MODEL=/remote-home/my/Projects/bert_theseus/BERT/uncased_L-12_H-768_A-12_oneflow
-# PRETRAINED_MODEL=/remote-home/my/Projects/bert_theseus/BERT-theseus/log/MRPC_uncased_L-12_H-768_A-12_oneflow_v1/snapshot_last_snapshot
+# which GPU to use
+GPU=$1
+
+dataset=$2
+
+STUDENT_NAME=$3
 
 # ofrecord dataset dir
 DATA_ROOT=/usr/local/glue_ofrecord
-GPU_ID=0
 
-# choose dateset `CoLA` or `MRPC`
-dataset=SST-2
-#dataset=MRPC
+train_data_dir=$DATA_ROOT/${dataset}/train
+eval_data_dir=$DATA_ROOT/${dataset}/eval
+
+# saved student model dir
+STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
+
+#model_load_dir=./log/${dataset}_bert_theseus_uncased_L-12_H-768_A-12_oneflow_v1/snapshot_last_snapshot
+
+
 if [ $dataset = "CoLA" ]; then
   train_example_num=8551
   eval_example_num=1043
@@ -61,15 +69,11 @@ else
   exit
 fi
 
-
-train_data_dir=$DATA_ROOT/${dataset}/train
-eval_data_dir=$DATA_ROOT/${dataset}/eval
-model_load_dir=./log/${dataset}_bert_theseus_uncased_L-12_H-768_A-12_oneflow_v1/snapshot_last_snapshot
 # mkdir -p ${model_save_dir}
 
 replace_prob=1.0
 
-CUDA_VISIBLE_DEVICES=$1 python3 ./theseus/run_classifier.py \
+CUDA_VISIBLE_DEVICES=${GPU} python3 ./theseus/run_classifier.py \
   --do_train=false \
   --do_eval=True \
   --model=Glue_$dataset \
@@ -80,7 +84,7 @@ CUDA_VISIBLE_DEVICES=$1 python3 ./theseus/run_classifier.py \
   --train_example_num=$train_example_num \
   --eval_data_dir=$eval_data_dir \
   --eval_example_num=$eval_example_num \
-  --model_load_dir=${model_load_dir} \
+  --model_load_dir=${STUDENT_DIR} \
   --batch_size_per_device=32 \
   --eval_batch_size_per_device=4 \
   --loss_print_every_n_iter 20 \

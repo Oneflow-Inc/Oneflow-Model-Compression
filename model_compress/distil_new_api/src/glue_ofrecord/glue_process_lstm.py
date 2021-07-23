@@ -291,11 +291,11 @@ if __name__ == "__main__":
     '''提取预训练词向量'''
     # 下面的目录、文件名按需更改。
     config =Config
-    dataset = "SST-2"
-    train_dir = "/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_data/{}/train.tsv".format(dataset)
-    dev_dir = "/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_data/{}/dev.tsv".format(dataset)
+    dataset = "MRPC"
+    train_dir = "../../data/glue_data/{}/train.tsv".format(dataset)
+    dev_dir = "../../data/glue_data/{}/dev.tsv".format(dataset)
 
-    vocab_dir = "/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord/{}_lstm_32".format(dataset)
+    vocab_dir = "../../data/glue_ofrecord/{}_lstm_32".format(dataset)
     pretrain_dir = ""
     emb_dim = 300
     if os.path.exists(os.path.join(vocab_dir,'vocab.pkl')):
@@ -310,7 +310,7 @@ if __name__ == "__main__":
     # print(word_to_id)
     # print(len(word_to_id))
 
-    output_dir = '/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord/{}_lstm_32'.format(dataset)
+    output_dir = '../../data/glue_ofrecord/{}_lstm_32'.format(dataset)
     total_examples = {}
     max_seq_length= 32
     config.vocab_path = os.path.join(vocab_dir,'vocab.pkl')

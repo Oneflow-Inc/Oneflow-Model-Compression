@@ -165,32 +165,111 @@ bash glue_process.sh
 - STUDENT_DIR: 学生模型保存路径，蒸馏过的学生模型下载链接如下（SST-2数据集）
 - RESULT_DIR: 测试结果json文件保存路径 （如果RESULT_DIR=""，则默认保存到模型保存路径下，results_eval.json）
 
-- 不同知识蒸馏算法：
-    - KD
-    
-        下载链接: https://pan.baidu.com/s/1EgQyQgxAcFAG8Ch3-4VPaw 提取码: 5k9p 
-        ```bash
-        bash run_eval_student_kd.sh
+训练好的学生模型断点可以在此处下载：下载链接 https://pan.baidu.com/s/1TZBCMO5xSnFxbPt41qpf7A  密码: 5rd7
+
+测试命令说明如下：
+```
+KD（Knowledge Distillation): 
+    bash run_eval_student_kd.sh {哪个GPU} {数据集名称} {模型ID}
+Distilled-BiLSTM:
+    bash run_eval_student_distilled_lstm.sh {哪个GPU} {数据集名称} {模型ID}
+BERT-PKD:
+    bash run_eval_student_bert_pkd.sh {哪个GPU} {数据集名称} {模型ID}
+TinyBERT:
+    bash run_eval_student_tinybert.sh {哪个GPU} {数据集名称} {模型ID}
+BERT-of-Theseus
+    bash run_eval_theseus.sh {哪个GPU} {数据集名称} {模型ID}
+```
+
+将训练好的断点放在模型保存路径下（默认为`./models/`），执行以下脚本进行测试：
+
+- 测试不同知识蒸馏模型：
+    - KD（Knowledge Distillation）
+        - SST-2 (Acc: 80.8%)
         ```
+        bash run_eval_student_kd.sh 0 SST-2 bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+        ```
+        - QQP (Acc: 80.6%)
+        ```
+        bash run_eval_student_kd.sh 0 QQP bert-kd-distl_epoch-5_lr-5e-5_wd-0.0001_kd_alpha-0.8
+        ```
+        - MRPC (Acc: 68.3%)
+        ```
+        bash run_eval_student_kd.sh 0 MRPC bert-kd-distl_epoch-5_lr-2e-5_wd-0.001_kd_alpha-0.8
+        ```
+        - RTE (Acc: 54.2%)
+        ```
+        bash run_eval_student_kd.sh 0 RTE bert-kd-distl_epoch-5_lr-2e-5_wd-0.0001_kd_alpha-0.8
+        ```
+        - CoLA (MCC: 12.0%)
+        ```
+        bash run_eval_student_kd.sh 0 CoLA bert-kd-distl_epoch-70_lr-5e-5_wd-0.0001_kd_alpha-0.8
+        ```       
     - Distilled-BiLSTM
-    
-        下载链接: https://pan.baidu.com/s/1M4XzB2DnLikglxVFvhnYpw  提取码: hqhj
-        ```bash
-        bash run_eval_student_distilled_lstm.sh
+        - SST-2 (Acc: 83.3%)
         ```
+        bash run_eval_student_distilled_lstm.sh 0 SST-2 bert-lstm_32-distl_epoch-5_lr-1e-4_wd-0.0001_kd_alpha-0.7
+        ```
+        - QQP (Acc: 76.5%)
+        ```
+        bash run_eval_student_distilled_lstm.sh 0 QQP bert-distilled_lstm_epoch-10_lr-7e-5_wd-0.0001_kd_alpha-0.7
+        ```
+        - MRPC (Acc: 68.8%)
+        ```
+        bash run_eval_student_distilled_lstm.sh 0 MRPC bert-distilled_lstm_epoch-30_lr-5e-6_wd-0.001_kd_alpha-0.7
+        ```
+        - RTE (Acc: 55.9%)
+        ```
+        bash run_eval_student_distilled_lstm.sh 0 RTE bert-distilled_lstm_epoch-30_lr-5e-5_wd-0.0001_kd_alpha-0.7
+        ```
+        - CoLA (MCC: 13.1%)
+        ```
+        bash run_eval_student_distilled_lstm.sh 0 CoLA bert-distilled_lstm_epoch-100_lr-5e-5_wd-0.0001_kd_alpha-0.7
+        ```       
     - BERT-PKD
-      - 从教师模型中间层初始化，下载链接: https://pan.baidu.com/s/1l7vXn-3U05Hzl0RXCJPiLg 提取码: 33dk
-      - 随机初始化，下载链接: https://pan.baidu.com/s/1m46j57Tova_yaGLabAqUIw 提取码: pdx4
-        ```bash
-        bash run_eval_student_bert_pkd.sh
+        - SST-2 (Acc: 88.7%)
         ```
+        bash run_eval_student_bert_pkd.sh 0 SST-2 bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+        ```
+        - QQP (Acc: 89.8%)
+        ```
+        bash run_eval_student_bert_pkd.sh 0 QQP bert-pkd_3_epoch-5_lr-5e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+        ```
+        - MRPC (Acc: 70.9%)
+        ```
+        bash run_eval_student_bert_pkd.sh 0 MRPC bert-pkd_3_epoch-5_lr-2e-5_wd-0.001_kd_alpha-0.2_kd_beta-10
+        ```
+        - RTE (Acc: 58.7%)
+        ```
+        bash run_eval_student_bert_pkd.sh 0 RTE bert-pkd_3_epoch-5_lr-3e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+        ```
+        - CoLA (MCC: 25.6%)
+        ```
+        bash run_eval_student_bert_pkd.sh 0 CoLA bert-pkd_3_epoch-100_lr-5e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+        ```       
 
     - TinyBERT
-    
-        下载链接: https://pan.baidu.com/s/1nOAZHd3wLmyVw2vTJB7KfQ 提取码: ma65
-        ```bash
-        bash run_eval_student_tinybert.sh
+        - SST-2 (Acc: 91.6%)
         ```
+        bash run_eval_student_tinybert.sh 0 SST-2 tinybert_epoch-4_lr-2e-5_wd-0.0001
+        ```
+        - QQP (Acc: 89.6)
+        ```
+        bash run_eval_student_tinybert.sh 0 QQP tinybert_epoch-5_lr-1e-4_wd-0.0001
+        ```
+        - MRPC (Acc: 86.5%)
+        ```
+        bash run_eval_student_tinybert.sh 0 MRPC tinybert_epoch-30_lr-2e-5_wd-0.001
+        ```
+        - RTE (Acc: 65.6%)
+        ```
+        bash run_eval_student_tinybert.sh 0 RTE tinybert_epoch-5_lr-2e-5_wd-0.0001
+        ```
+        - CoLA (MCC: 22.3%)
+        ```
+        bash run_eval_student_tinybert.sh 0 CoLA tinybert_epoch-100_lr-7e-5_wd-0.0001
+        ```       
       
-
-
+评价指标：
+- Accuracy（Acc）: SST-2, MRPC, QQP, RTE
+- MCC (Matthews correlation coefficient): CoLA

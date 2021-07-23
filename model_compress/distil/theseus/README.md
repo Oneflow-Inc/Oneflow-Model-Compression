@@ -195,7 +195,7 @@ bash glue_process.sh
         ```
     
     - BERT-of-Theseus
-    
+        下载链接: https://pan.baidu.com/s/1PkA3Y7s1ih8HcIaYpRQqNg  提取码: haku
         ```bash
         bash eval_bert_theseus.sh ${GPU_ID} ${VERSION}
         example: bash eval_bert_theseus.sh 0 1s1

@@ -1,17 +1,23 @@
 # Copyright (c) The Tianshu Platform Authors.
 # Licensed under the Apache License
 
-dataset=SST-2
-
 # ofrecord dataset dir
 DATA_ROOT=./data/glue_ofrecord
 
 # which GPU to use
-GPU=0
+GPU=$1
+
+dataset=$2 # SST-2
+
+STUDENT_NAME=$3  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
 
 # saved student model dir
-STUDENT_DIR="./models/student_model/SST-2/tinybert_epoch-4_lr-2e-5_wd-0.0001"
+STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
+
 RESULT_DIR=""
+
+train_data_dir=$DATA_ROOT/${dataset}/train
+eval_data_dir=$DATA_ROOT/${dataset}/eval
 
 if [ $dataset = "CoLA" ]; then
   train_example_num=8551
@@ -45,9 +51,6 @@ else
   echo "dataset must be GLUE such as 'CoLA','MRPC','SST-2','QQP','MNLI','WNLI','STS-B',"
   exit
 fi
-
-train_data_dir=$DATA_ROOT/${dataset}/train
-eval_data_dir=$DATA_ROOT/${dataset}/eval
 
 CUDA_VISIBLE_DEVICES=$GPU  python3 ./examples/tinybert/task_student_tinybert.py \
   --do_train='False' \

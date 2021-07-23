@@ -1,14 +1,22 @@
 # Copyright (c) The Tianshu Platform Authors.
 # Licensed under the Apache License
 
+# which GPU to use
+GPU=$1
+
+dataset=$2 
+
+TEACHER_MODEL_NAME=$3
+
 # ofrecord dataset dir
 DATA_ROOT=./data/glue_ofrecord
 
-# choose dateset `CoLA`, `MRPC` 'SST-2'
-dataset=SST-2
+TEACHER_MODEL_DIR="./models/finetuned_teacher/${TEACHER_MODEL_NAME}/snapshot_best"
 
-# which GPU to use
-GPU=0
+RESULT_DIR="./models/finetuned_teacher/${TEACHER_MODEL_NAME}/snapshot_best"
+
+train_data_dir=$DATA_ROOT/${dataset}/train
+eval_data_dir=$DATA_ROOT/${dataset}/eval
 
 if [ $dataset = "CoLA" ]; then
   train_example_num=8551
@@ -46,17 +54,6 @@ else
   echo "dataset must be GLUE such as 'CoLA','MRPC','SST-2','QQP','MNLI','WNLI','',"
   exit
 fi
-
-TEACHER_MODEL_DIR="./models/finetuned_teacher/SST-2_epoch-3_lr-2e-5_wd-0.0001/snapshot_best"
-#TEACHER_MODEL_DIR="./models/finetuned_teacher/RTE_epoch-5_lr-3e-5_wd-0.0001/snapshot_best"
-#TEACHER_MODEL_DIR="./models/finetuned_teacher/MRPC_epoch-5_lr-1e-5_wd-0.001/snapshot_best"
-#TEACHER_MODEL_DIR="./models/finetuned_teacher/CoLA_epoch-5_lr-1e-5_wd-0.01/snapshot_best"
-#TEACHER_MODEL_DIR="./models/finetuned_teacher/QQP_epoch-5_lr-2e-5_wd-0.0001/snapshot_best"
-
-RESULT_DIR="./models/finetuned_teacher/SST-2_epoch-3_lr-2e-5_wd-0.0001/snapshot_best"
-
-train_data_dir=$DATA_ROOT/${dataset}/train
-eval_data_dir=$DATA_ROOT/${dataset}/eval
 
 CUDA_VISIBLE_DEVICES=$GPU python3 examples/teacher_bert/task_teacher.py \
   --do_train='False' \

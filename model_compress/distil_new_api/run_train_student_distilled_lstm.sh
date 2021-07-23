@@ -1,53 +1,24 @@
 # Copyright (c) The Tianshu Platform Authors.
 # Licensed under the Apache License
 
-# which GPU to use
-GPU=$1
+# Script for knowledge distillation with distilled_bilstm algorithm.
 
-dataset=$2 # SST-2
-
-STUDENT_NAME=$3  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+# ofrecord dataset dir
+DATA_ROOT=$1
 
 # saved student model dir
-STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
-# ofrecord dataset dir
-DATA_ROOT=./data/glue_ofrecord
+STUDENT_DIR="$2/student_model"
 
-if [ $dataset = "CoLA" ]; then
-  train_example_num=8551
-  eval_example_num=1043
-  test_example_num=1063
-elif [ $dataset = "MRPC" ]; then
-  train_example_num=3668
-  eval_example_num=408
-  test_example_num=1725
-elif [ $dataset = "SST-2" ]; then
-  train_example_num=67349
-  eval_example_num=872
-  test_example_num=1821
-elif [ $dataset = "QQP" ]; then
-  train_example_num=363849
-  eval_example_num=40430
-  test_example_num=0
-elif [ $dataset = "MNLI" ]; then
-  train_example_num=392702
-  eval_example_num=9815
-  test_example_num=0
-elif [ $dataset = "WNLI" ]; then
-  train_example_num=635
-  eval_example_num=71
-  test_example_num=0
-elif [ $dataset = "RTE" ]; then
-  train_example_num=2490
-  eval_example_num=277
-  test_example_num=0
-else
-  echo "dataset must be GLUE such as 'CoLA','MRPC','SST-2','QQP','MNLI','WNLI','STS-B',"
-  exit
-fi
+# tran log out
+TRAIN_LOG_DIR=$3
 
-KD_ALPHA=0.7
-RESULT_DIR=""
+# inference json result out
+RESULT_DIR=$4
+
+dataset=$5
+
+# fine-tuned teacher model dir
+FT_BERT_BASE_DIR="/usr/local/output/model/before/snapshot_best"
 
 train_data_dir=$DATA_ROOT/${dataset}/train
 train_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/train
@@ -55,18 +26,78 @@ train_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/train
 eval_data_dir=$DATA_ROOT/${dataset}/eval
 eval_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/eval
 
+# which GPU to use
+GPU=0
+
+if [ $dataset = "CoLA" ]; then
+  train_example_num=8551
+  eval_example_num=1043
+  test_example_num=1063
+  learning_rate=5e-5
+  wd=0.0001
+  epoch=100
+elif [ $dataset = "MRPC" ]; then
+  train_example_num=3668
+  eval_example_num=408
+  test_example_num=1725
+  learning_rate=5e-6
+  epoch=30
+  wd=0.001
+elif [ $dataset = "SST-2" ]; then
+  train_example_num=67349
+  eval_example_num=872
+  test_example_num=1821
+  learning_rate=1e-4
+  epoch=5
+  wd=0.0001
+elif [ $dataset = "QQP" ]; then
+  train_example_num=363849
+  eval_example_num=40430
+  test_example_num=0
+  learning_rate=7e-5
+  epoch=10
+  wd=0.0001
+elif [ $dataset = "MNLI" ]; then
+  train_example_num=392702
+  eval_example_num=9815
+  test_example_num=0
+  learning_rate=2e-5
+  epoch=5
+  wd=0.0001
+elif [ $dataset = "WNLI" ]; then
+  train_example_num=635
+  eval_example_num=71
+  test_example_num=0
+  learning_rate=2e-5
+  epoch=5
+  wd=0.0001
+elif [ $dataset = "RTE" ]; then
+  train_example_num=2490
+  eval_example_num=277
+  test_example_num=0
+  learning_rate=2e-5
+  epoch=30
+  wd=0.0001
+else
+  echo "dataset must be GLUE such as 'CoLA','MRPC','SST-2','QQP','MNLI','WNLI','STS-B',"
+  exit
+fi
+
 CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_lstm.py \
-  --do_train='False' \
+  --do_train='True' \
   --do_eval='True' \
+  --serve_for_online='True' \
   --model=Glue_$dataset \
   --task_name=$dataset  \
   --gpu_num_per_node=1 \
+  --num_epochs=${epoch} \
   --train_data_dir=$train_data_dir \
   --train_data_dir_lstm=${train_data_dir_lstm} \
   --train_example_num=$train_example_num \
   --eval_data_dir=$eval_data_dir \
   --eval_data_dir_lstm=$eval_data_dir_lstm \
   --eval_example_num=$eval_example_num \
+  --teacher_model=${FT_BERT_BASE_DIR} \
   --batch_size_per_device=32 \
   --eval_batch_size_per_device=32 \
   --loss_print_every_n_iter 1 \
@@ -93,5 +124,7 @@ CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_ls
   --teacher_hidden_dropout_prob=0.1 \
   --teacher_hidden_size_per_head=64 \
   --teacher_hidden_size=768 \
+  --learning_rate=$learning_rate \
   --model_save_every_n_iter=50000 \
-  --kd_alpha=${KD_ALPHA}
+  --weight_decay_rate=$wd \
+  --kd_alpha=0.7
