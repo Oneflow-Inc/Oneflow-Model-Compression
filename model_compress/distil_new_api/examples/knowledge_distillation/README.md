@@ -8,19 +8,21 @@ L_KD = αL_CE+(1-α)L_DS
 - L_DS 为学生模型输出logits和教师模型输出logits的距离，比如可以用软softmax或者KL散度等计算。
 - α用来调节两个loss的权重。
 
-## 1. 依赖
-- Python 3.6
-- oneflow-cu101 0.1.10
+## 1 依赖
+- Python 3.7
+- oneflow-cu101 0.5.0
+- numpy 1.19.4
 
 完整的环境可以通过以下命令安装：
-```bash
-conda create -n tinybert python=3.6
-```
+  ```bash
+conda create -n distil python=3.7
+  ```
 
-```bash
-python3 -m pip install --find-links https://oneflow-inc.github.io/nightly oneflow_cu101 --user
-```
-> 注：以下操作时，根目录为`model_compress/distil`   
+  ```
+python3 -m pip install oneflow -f https://staging.oneflow.info/branch/master/cu101
+  ```
+
+> 注：以下操作时，根目录为`model_compress/distil_new_api`   
 
 ## 2. 数据获取
 如何获取数据请查阅[这里](../../README.md#22-数据获取)
@@ -49,14 +51,7 @@ bash run_train_student_kd.sh
 - STUDENT_DIR: 学生模型保存路径
 - RESULT_DIR: 测试结果json文件保存路径 （如果为RESULT_DIR=""，则默认保存到模型保存路径下，results_eval.json）
 
-蒸馏过的学生模型下载链接如下（SST-2数据集）:
-
-下载链接: https://pan.baidu.com/s/1EgQyQgxAcFAG8Ch3-4VPaw 提取码: 5k9p 
+ 
 ```bash
 bash run_eval_student_kd.sh
 ```
-### 4.3 结果
-在SST-2 DEV数据集上: 
-- 模型精度：教师模型acc 92.2% ->学生模型acc 80.5%
-- 模型尺寸：教师模型110M -> 学生模型 14.5M   (↓7.5x)
-- 推理耗时：教师模型4.04s -> 0.81s   (↓5.0x)

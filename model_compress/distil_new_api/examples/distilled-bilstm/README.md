@@ -4,19 +4,20 @@
 Distilled BiLSTM的教师模型采用微调过的BERT，学生模型采用简单神经网络LSTM。
 蒸馏的目标是KD loss，即仅使用软标签进行蒸馏，将BERT中的知识蒸馏到LSTM中。
 
-## 1. 依赖
-- Python 3.6
-- oneflow-cu101 0.1.10
+## 1 依赖
+- Python 3.7
+- oneflow-cu101 0.5.0
+- numpy 1.19.4
 
 完整的环境可以通过以下命令安装：
-```bash
-conda create -n tinybert python=3.6
-```
+  ```bash
+conda create -n distil python=3.7
+  ```
 
-```bash
-python3 -m pip install --find-links https://oneflow-inc.github.io/nightly oneflow_cu101 --user
-```
-> 注：以下操作时，根目录为`model_compress/distil`   
+  ```
+python3 -m pip install oneflow -f https://staging.oneflow.info/branch/master/cu101
+  ```
+> 注：以下操作时，根目录为`model_compress/distil_new_api`   
 
 ## 2. 数据获取
 如何获取数据请查阅[这里](../../README.md#22-数据获取)
@@ -41,9 +42,6 @@ bash run_train_student_distilled_lstm.sh
 ```
 
 ### 4.2 测试
-蒸馏过的学生模型下载链接如下（SST-2数据集）:
-
-下载链接: https://pan.baidu.com/s/1M4XzB2DnLikglxVFvhnYpw  提取码: hqhj
 
 执行以下脚本进行测试：
 - DATA_ROOT: GLUE数据集总路径
@@ -54,8 +52,3 @@ bash run_train_student_distilled_lstm.sh
 ```bash
 bash run_eval_student_distilled_lstm.sh
 ```
-### 4.3 结果
-在SST-2 DEV数据集上: 
-- 模型精度：教师模型acc 92.2% ->学生模型acc 82.9%
-- 模型尺寸：教师模型110M -> 学生模型 15.3M   (↓7.5x)
-- 推理耗时：教师模型4.04s -> 0.83s   (↓4.8x)
