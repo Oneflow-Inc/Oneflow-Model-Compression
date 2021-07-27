@@ -4,18 +4,19 @@
 # Script for knowledge distillation with KD algorithm.
 
 # ofrecord dataset dir
-DATA_ROOT=$1
+DATA_ROOT=../data/glue_ofrecord_test
+
+dataset=SST-2
+
+STUDENT_NAME=kd
 
 # saved student model dir
-STUDENT_DIR="$2/student_model"
-
+STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
 # tran log out
-TRAIN_LOG_DIR=$3
+TRAIN_LOG_DIR=./log
 
 # inference json result out
-RESULT_DIR=$4
-
-dataset=$5
+RESULT_DIR=$STUDENT_DIR
 
 # fine-tuned teacher model dir
 FT_BERT_BASE_DIR="/usr/local/output/model/before/snapshot_best"
@@ -83,7 +84,7 @@ else
   exit
 fi
 
-CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student_kd.py \
+CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student_kd_new_api.py \
   --do_train='True' \
   --do_eval='True' \
   --serve_for_online='True' \
@@ -97,8 +98,8 @@ CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student
   --eval_example_num=$eval_example_num \
   --teacher_model=${FT_BERT_BASE_DIR} \
   --student_model=${TMP_STUDENT_DIR} \
-  --batch_size_per_device=32 \
-  --eval_batch_size_per_device=32 \
+  --batch_size_per_device=8 \
+  --eval_batch_size_per_device=16 \
   --loss_print_every_n_iter 10 \
   --log_dir=${TRAIN_LOG_DIR} \
   --result_dir=${RESULT_DIR} \

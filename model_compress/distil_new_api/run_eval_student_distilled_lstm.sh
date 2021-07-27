@@ -2,16 +2,16 @@
 # Licensed under the Apache License
 
 # which GPU to use
-GPU=$1
+GPU=0
 
-dataset=$2 # SST-2
+dataset=SST-2 # SST-2
 
-STUDENT_NAME=$3  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+STUDENT_NAME=kd_lstm # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
 
 # saved student model dir
 STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
 # ofrecord dataset dir
-DATA_ROOT=./data/glue_ofrecord
+DATA_ROOT=../data
 
 if [ $dataset = "CoLA" ]; then
   train_example_num=8551
@@ -49,13 +49,13 @@ fi
 KD_ALPHA=0.7
 RESULT_DIR=""
 
-train_data_dir=$DATA_ROOT/${dataset}/train
-train_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/train
+train_data_dir=$DATA_ROOT/glue_ofrecord_test/${dataset}/train
+train_data_dir_lstm=$DATA_ROOT/glue_ofrecord/${dataset}_lstm_32/train
 
-eval_data_dir=$DATA_ROOT/${dataset}/eval
-eval_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/eval
+eval_data_dir=$DATA_ROOT/glue_ofrecord_test/${dataset}/eval
+eval_data_dir_lstm=$DATA_ROOT/glue_ofrecord/${dataset}_lstm_32/eval
 
-CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_lstm.py \
+CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_lstm_new_api.py \
   --do_train='False' \
   --do_eval='True' \
   --model=Glue_$dataset \

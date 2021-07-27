@@ -6,7 +6,11 @@ import time
 import sys
 import oneflow.experimental.nn as nn
 import json
+from tqdm import tqdm
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "model_compress/distil_new_api/src")))
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "./src")))
 import config as configs
 from data_util import OFRecordDataLoader
 from bert_model.bert import BERT
@@ -24,24 +28,24 @@ def _parse_args():
             raise argparse.ArgumentTypeError('Unsupported value encountered.')
 
     parser = configs.get_parser()
-    parser.add_argument("--task_name", type=str, default='CoLA')
+    parser.add_argument("--task_name", type=str, default='sst-2')
     parser.add_argument("--teacher_model", default=None, type=str, help="The teacher model dir.")
     parser.add_argument("--student_model", default=None, type=str, help="The student model dir.")
     parser.add_argument("--total_model", default=None, type=str, help="The student model dir.")
 
     parser.add_argument('--num_epochs', type=int, default=3, help='number of epochs')
-    parser.add_argument("--train_data_dir", type=str, default='/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord_test/SST-2/train/')
+    parser.add_argument("--train_data_dir", type=str, default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/train/')
     parser.add_argument("--train_data_prefix", type=str, default='train.of_record-')
     parser.add_argument("--train_example_num", type=int, default=67349,
                         help="example number in dataset")
     parser.add_argument("--batch_size_per_device", type=int, default=8)
     parser.add_argument("--train_data_part_num", type=int, default=1,
                         help="data part number in dataset")
-    parser.add_argument("--eval_data_dir", type=str, default='/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord_test/SST-2/eval/')
+    parser.add_argument("--eval_data_dir", type=str, default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/eval/')
     parser.add_argument("--eval_data_prefix", type=str, default='eval.of_record-')
     parser.add_argument("--eval_example_num", type=int, default=872,
                         help="example number in dataset")
-    parser.add_argument("--eval_batch_size_per_device", type=int, default=12)
+    parser.add_argument("--eval_batch_size_per_device", type=int, default=16)
     parser.add_argument("--eval_data_part_num", type=int, default=1,
                         help="data part number in dataset")
     parser.add_argument("--result_dir", type=str, default="", help="the save directory of results")
@@ -90,22 +94,33 @@ class kd_model(nn.Module):
                         teacher_hidden,
                         teacher_n_layers,
                         teacher_attn_heads,
-                        teacher_dropout):
+                        teacher_dropout,
+                        teacher_path = None):
         super().__init__()
         self.student_model = BERT(student_vocab_size, 
                                   student_hidden, 
                                   student_n_layers, 
                                   student_attn_heads, 
                                   student_dropout)
-        self.teacher_model = BERT(teacher_vocab_size,
-                                  teacher_hidden,
-                                  teacher_n_layers,
-                                  teacher_attn_heads,
-                                  teacher_dropout)
+        if teacher_path:
+            #TODO 拿到新接口的bert 初始化的时候要用预训练模型进行初始化
+            pass
+        else:
+            self.teacher_model = BERT(teacher_vocab_size,
+                                    teacher_hidden,
+                                    teacher_n_layers,
+                                    teacher_attn_heads,
+                                    teacher_dropout)
         self.student_output_layer = nn.Linear(student_hidden,2)
         self.teacher_output_layer = nn.Linear(teacher_hidden,2)
         self.student_softmax = nn.Softmax(dim=1)
         self.teacher_softmax = nn.Softmax(dim=1)
+    def eval_forward(self, x, segment_info):
+        student_output,_,_ = self.student_model(x,segment_info)
+        student_output2 = self.student_output_layer(student_output[:,0])
+        student_logits = self.student_softmax(student_output2)
+        return student_logits
+
     def forward(self, x, segment_info):
         student_output,_,_ = self.student_model(x,segment_info)
         student_output2 = self.student_output_layer(student_output[:,0])
@@ -121,15 +136,15 @@ def eval(model, dataloader, desc = "train"):
     labels = []
     predictions = []
     start_time = time.time()
-    for b in range(len(dataloader)):
-        blob_confs = dataloader.get_batch()
-        start_t = time.time()
-        input_ids = blob_confs['input_ids'].to("cuda")
-        segment_ids = blob_confs['segment_ids'].to("cuda")
-        label_ids = blob_confs['label_ids'].squeeze(-1)
-        student_logits, _ = model(input_ids, segment_ids)
-        predictions.extend(list(student_logits.to('cpu').numpy().argmax(axis=1)))
-        labels.extend(list(label_ids))
+    with flow.no_grad():
+        for b in tqdm(range(len(dataloader))):
+            blob_confs = dataloader.get_batch()
+            input_ids = blob_confs['input_ids'].to("cuda")
+            segment_ids = blob_confs['segment_ids'].to("cuda")
+            label_ids = blob_confs['label_ids'].squeeze(-1)
+            student_logits = model.eval_forward(input_ids, segment_ids)
+            predictions.extend(student_logits.detach().to('cpu').numpy().argmax(axis=1).tolist())
+            labels.extend(label_ids.tolist())
     end_time = time.time()
     cost_time = end_time - start_time
     print('cost time: {} s'.format(cost_time))
@@ -171,18 +186,6 @@ def eval(model, dataloader, desc = "train"):
     return metric_dict      
 
 def main(args):
-    glue_output_modes = {
-    "cola": "classification",
-    "mnli": "classification",
-    "mnli-mm": "classification",
-    "mrpc": "classification",
-    "sst-2": "classification",
-    "sts-b": "regression",
-    "qqp": "classification",
-    "qnli": "classification",
-    "rte": "classification",
-    "wnli": "classification",
-}
 
     acc_tasks = ["mnli", "mrpc", "sst-2", "qqp", "qnli", "rte"]
     corr_tasks = ["sts-b"]
@@ -219,80 +222,84 @@ def main(args):
                      )
 
     model.to('cuda')
-    of_cross_entropy = flow.nn.CrossEntropyLoss(reduction='mean')
-    of_cross_entropy.to("cuda")
-    of_sgd = flow.optim.SGD(
-        model.parameters(), lr=args.learning_rate)
-    of_losses = []
-    all_samples = len(eval_data_loader) * args.eval_batch_size_per_device
-    print_interval = 10
-    for epoch in range(args.num_epochs):
-        model.train()
-        for b in range(len(train_data_loader)):
-            blob_confs = train_data_loader.get_batch()
+    
+    if not os.path.exists(args.model_save_dir):
+        os.makedirs(args.model_save_dir)
+    if args.do_train:
 
-            # oneflow train
-            start_t = time.time()
-            input_ids = blob_confs['input_ids'].to("cuda")
-            segment_ids = blob_confs['segment_ids'].to("cuda")
-            label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
+        of_cross_entropy = flow.nn.CrossEntropyLoss(reduction='mean')
+        of_cross_entropy.to("cuda")
+        of_sgd = flow.optim.SGD(
+            model.parameters(), lr=args.learning_rate)
+        of_losses = []
+        
+        print_interval = 10
+        print('start training......')
 
-            student_logits, teacher_logits = model(input_ids, segment_ids)
+        best_dev_acc = 0.0
 
-            cls_loss = pred_distill(args, student_logits, teacher_logits)
-
-            loss_ce = of_cross_entropy(student_logits, label_ids)
-
-            loss = loss_ce * args.kd_alpha + cls_loss * (1 - args.kd_alpha)
-            loss.backward()
-            of_sgd.step()
-            of_sgd.zero_grad()
-            end_t = time.time()
-            if b % print_interval == 0:
-                l = loss.numpy()[0]
-                of_losses.append(l)
-                print(
-                    "epoch {} train iter {} oneflow loss {}, train time : {}".format(
-                        epoch, b, l, end_t - start_t
+        for epoch in range(args.num_epochs):
+            model.train()
+            for b in range(len(train_data_loader)):
+                blob_confs = train_data_loader.get_batch()
+                # oneflow train
+                start_t = time.time()
+                input_ids = blob_confs['input_ids'].to("cuda")
+                segment_ids = blob_confs['segment_ids'].to("cuda")
+                label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
+                student_logits, teacher_logits = model(input_ids, segment_ids)
+                cls_loss = pred_distill(args, student_logits, teacher_logits)
+                loss_ce = of_cross_entropy(student_logits, label_ids)
+                loss = loss_ce * args.kd_alpha + cls_loss * (1 - args.kd_alpha)
+                loss.backward()
+                of_sgd.step()
+                of_sgd.zero_grad()
+                end_t = time.time()
+                if b % print_interval == 0:
+                    l = loss.numpy()[0]
+                    of_losses.append(l)
+                    print(
+                        "epoch {} train iter {}\{} oneflow loss {}, train time : {}".format(
+                            epoch, b, len(train_data_loader), l, end_t - start_t
+                        )
                     )
-                )
-        print('EvalTrainJob...')
-        eval(model,train_data_loader,desc = 'train')
-        print('EvalValJob...')
-        result = eval(model,eval_data_loader,desc = 'eval')
+            # print('EvalTrainJob...')
+            # eval(model,train_data_loader,desc = 'train')
+            print('EvalValJob...')
+            result = eval(model,eval_data_loader,desc = 'eval')
 
-        save_model = False
-        if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
-            best_dev_acc = result['accuracy']
-            save_model = True
+            save_model = False
+            if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
+                best_dev_acc = result['accuracy']
+                save_model = True
 
-        # if task_name in corr_tasks and result['corr'] > best_dev_acc:
-        #     best_dev_acc = result['corr']
-        #     save_model = True
+            # if task_name in corr_tasks and result['corr'] > best_dev_acc:
+            #     best_dev_acc = result['corr']
+            #     save_model = True
 
-        if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
-            best_dev_acc = result['matthews_corrcoef']
-            save_model = True
-            print('Best result:', result)
+            if task_name in mcc_tasks and result['matthews_corrcoef'] >= best_dev_acc:
+                best_dev_acc = result['matthews_corrcoef']
+                save_model = True
+                print('Best result:', result)
 
-        if save_model:
-            if os.path.exists(args.model_save_dir):
-                import shutil
-                shutil.rmtree(args.model_save_dir)
-            if not os.path.exists(args.model_save_dir):
-                os.makedirs(args.model_save_dir)
-            snapshot_save_path = os.path.join(args.model_save_dir)
-            print("Saving best model to {}".format(snapshot_save_path))
-            flow.save(model.state_dict(),snapshot_save_path)
-            flow.sync_default_session()
+            if save_model:
+                if os.path.exists(args.model_save_dir):
+                    import shutil
+                    shutil.rmtree(args.model_save_dir)
+                if not os.path.exists(args.model_save_dir):
+                    os.makedirs(args.model_save_dir)
+                snapshot_save_path = os.path.join(args.model_save_dir)
+                print("Saving best model to {}".format(snapshot_save_path))
+                flow.save(model.state_dict(),snapshot_save_path)
 
 
     if args.do_eval:
         print('Loading model...')
         print(args.model_save_dir)
-
         if not args.do_train:
-            flow.load(model,args.model_save_dir)
+            model_dict = flow.load(args.model_save_dir)
+            print('successful')
+            model.load_state_dict(model_dict)
         print('Evaluation...')
         result = eval(model,eval_data_loader,desc = 'eval')
 

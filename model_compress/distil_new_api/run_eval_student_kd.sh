@@ -2,21 +2,21 @@
 # Licensed under the Apache License
 
 # ofrecord dataset dir
-DATA_ROOT=./data/glue_ofrecord
+DATA_ROOT=../data/glue_ofrecord_test
 
 # which GPU to use
-GPU=$1
+GPU=0
 
-dataset=$2 # SST-2
+dataset=SST-2 # SST-2
 
-STUDENT_NAME=$3  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+STUDENT_NAME=kd  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
 
 # saved student model dir
 STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
 
 RESULT_DIR=""
 
-KD_ALPHA=0.8
+KD_ALPHA=0.8 
 
 train_data_dir=$DATA_ROOT/${dataset}/train
 eval_data_dir=$DATA_ROOT/${dataset}/eval
@@ -55,7 +55,7 @@ else
 fi
 
 
-CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student_kd.py \
+CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student_kd_new_api.py \
   --do_train='False' \
   --do_eval='True' \
   --model=Glue_$dataset \
@@ -65,8 +65,8 @@ CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/knowledge_distillation/task_student
   --train_example_num=$train_example_num \
   --eval_data_dir=$eval_data_dir \
   --eval_example_num=$eval_example_num \
-  --batch_size_per_device=32 \
-  --eval_batch_size_per_device=32 \
+  --batch_size_per_device=8 \
+  --eval_batch_size_per_device=16 \
   --loss_print_every_n_iter 10 \
   --log_dir=./log \
   --model_save_dir=${STUDENT_DIR} \

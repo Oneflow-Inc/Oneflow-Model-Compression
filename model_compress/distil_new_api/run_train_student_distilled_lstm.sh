@@ -4,27 +4,29 @@
 # Script for knowledge distillation with distilled_bilstm algorithm.
 
 # ofrecord dataset dir
-DATA_ROOT=$1
+DATA_ROOT=../data
+
+dataset=SST-2
+
+STUDENT_NAME=kd_lstm
 
 # saved student model dir
-STUDENT_DIR="$2/student_model"
+STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
 
 # tran log out
-TRAIN_LOG_DIR=$3
+TRAIN_LOG_DIR=./log
 
 # inference json result out
-RESULT_DIR=$4
-
-dataset=$5
+RESULT_DIR=$STUDENT_DIR
 
 # fine-tuned teacher model dir
 FT_BERT_BASE_DIR="/usr/local/output/model/before/snapshot_best"
 
-train_data_dir=$DATA_ROOT/${dataset}/train
-train_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/train
+train_data_dir=$DATA_ROOT/glue_ofrecord_test/${dataset}/train
+train_data_dir_lstm=$DATA_ROOT/glue_ofrecord/${dataset}_lstm_32/train
 
-eval_data_dir=$DATA_ROOT/${dataset}/eval
-eval_data_dir_lstm=$DATA_ROOT/${dataset}_lstm_32/eval
+eval_data_dir=$DATA_ROOT/glue_ofrecord_test/${dataset}/eval
+eval_data_dir_lstm=$DATA_ROOT/glue_ofrecord/${dataset}_lstm_32/eval
 
 # which GPU to use
 GPU=0
@@ -83,7 +85,7 @@ else
   exit
 fi
 
-CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_lstm.py \
+CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/distilled-bilstm/task_student_kd_lstm_new_api.py \
   --do_train='True' \
   --do_eval='True' \
   --serve_for_online='True' \

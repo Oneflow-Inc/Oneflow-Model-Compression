@@ -2,20 +2,21 @@
 # Licensed under the Apache License
 
 # which GPU to use
-GPU=$1
+DATA_ROOT=../data/glue_ofrecord_test
 
-dataset=$2
+# which GPU to use
+GPU=0
 
-STUDENT_NAME=$3  # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
+dataset=SST-2 # SST-2
+
+STUDENT_NAME=bert_pkd # bert-pkd_3_epoch-4_lr-2e-5_wd-0.0001_kd_alpha-0.2_kd_beta-10
 
 # saved student model dir
 STUDENT_DIR="./models/student_model/${dataset}/${STUDENT_NAME}"
 
-# ofrecord dataset dir
-DATA_ROOT=./data/glue_ofrecord
+RESULT_DIR=""
 train_data_dir=$DATA_ROOT/${dataset}/train
 eval_data_dir=$DATA_ROOT/${dataset}/eval
-RESULT_DIR=""
 
 LAYER_NUM=3
 KD_ALPHA=0.2
@@ -55,13 +56,12 @@ else
 fi
 
 
-CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/bert-pkd/task_student_bert-pkd.py \
+CUDA_VISIBLE_DEVICES=$GPU python3 ./examples/bert-pkd/task_student_bert-pkd_new_api.py \
   --do_train='False' \
   --do_eval='True' \
   --model=Glue_$dataset \
   --task_name=$dataset \
   --gpu_num_per_node=1 \
-  --num_epochs=${epoch} \
   --train_data_dir=$train_data_dir \
   --train_example_num=$train_example_num \
   --eval_data_dir=$eval_data_dir \

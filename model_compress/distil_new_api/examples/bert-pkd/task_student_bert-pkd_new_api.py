@@ -7,7 +7,11 @@ import time
 import sys
 import oneflow.experimental.nn as nn
 import json
+from tqdm import tqdm
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "model_compress/distil_new_api/src")))
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "./src")))
 import config as configs
 from data_util import OFRecordDataLoader
 from bert_model.bert import BERT
@@ -109,6 +113,12 @@ class bert_pkd(nn.Module):
         self.teacher_output_layer = nn.Linear(teacher_hidden,2)
         self.student_softmax = nn.Softmax(dim=1)
         self.teacher_softmax = nn.Softmax(dim=1)
+    def eval_forward(self, x, segment_info):
+        student_output,_,_ = self.student_model(x,segment_info)
+        student_output2 = self.student_output_layer(student_output[:,0])
+        student_logits = self.student_softmax(student_output2)
+        return student_logits
+
     def forward(self, x, segment_info):
         student_output,student_sequence_out,_ = self.student_model(x,segment_info)
         student_output2 = self.student_output_layer(student_output[:,0])
@@ -124,15 +134,15 @@ def eval(model, dataloader, desc = "train"):
     labels = []
     predictions = []
     start_time = time.time()
-    for b in range(len(dataloader)):
-        blob_confs = dataloader.get_batch()
-        start_t = time.time()
-        input_ids = blob_confs['input_ids'].to("cuda")
-        segment_ids = blob_confs['segment_ids'].to("cuda")
-        label_ids = blob_confs['label_ids'].squeeze(-1)
-        student_logits, _ = model(input_ids, segment_ids)
-        predictions.extend(list(student_logits.to('cpu').numpy().argmax(axis=1)))
-        labels.extend(list(label_ids))
+    with flow.no_grad():
+        for b in tqdm(range(len(dataloader))):
+            blob_confs = dataloader.get_batch()
+            input_ids = blob_confs['input_ids'].to("cuda")
+            segment_ids = blob_confs['segment_ids'].to("cuda")
+            label_ids = blob_confs['label_ids'].squeeze(-1)
+            student_logits = model.eval_forward(input_ids, segment_ids)
+            predictions.extend(student_logits.detach().to('cpu').numpy().argmax(axis=1).tolist())
+            labels.extend(label_ids.tolist())
     end_time = time.time()
     cost_time = end_time - start_time
     print('cost time: {} s'.format(cost_time))
@@ -174,18 +184,6 @@ def eval(model, dataloader, desc = "train"):
     return metric_dict      
 
 def main(args):
-    glue_output_modes = {
-    "cola": "classification",
-    "mnli": "classification",
-    "mnli-mm": "classification",
-    "mrpc": "classification",
-    "sst-2": "classification",
-    "sts-b": "regression",
-    "qqp": "classification",
-    "qnli": "classification",
-    "rte": "classification",
-    "wnli": "classification",
-}
 
     acc_tasks = ["mnli", "mrpc", "sst-2", "qqp", "qnli", "rte"]
     corr_tasks = ["sts-b"]
@@ -222,81 +220,87 @@ def main(args):
                     )
 
     model.to('cuda')
-    of_cross_entropy = flow.nn.CrossEntropyLoss(reduction='mean')
-    of_cross_entropy.to("cuda")
-    of_sgd = flow.optim.SGD(
-        model.parameters(), lr=args.learning_rate)
-    of_losses = []
-    all_samples = len(eval_data_loader) * args.eval_batch_size_per_device
-    print_interval = 10
-    for epoch in range(args.num_epochs):
-        model.train()
-        for b in range(len(train_data_loader)):
-            blob_confs = train_data_loader.get_batch()
+    if not os.path.exists(args.model_save_dir):
+        os.makedirs(args.model_save_dir)
+    if args.do_train:
 
-            # oneflow train
-            start_t = time.time()
-            input_ids = blob_confs['input_ids'].to("cuda")
-            segment_ids = blob_confs['segment_ids'].to("cuda")
-            label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
+        of_cross_entropy = flow.nn.CrossEntropyLoss(reduction='mean')
+        of_cross_entropy.to("cuda")
+        of_sgd = flow.optim.SGD(
+            model.parameters(), lr=args.learning_rate)
+        of_losses = []
+        all_samples = len(eval_data_loader) * args.eval_batch_size_per_device
+        print_interval = 10
+        best_dev_acc = 0.0
 
-            student_logits, student_sequence_out, teacher_logits, teacher_sequence_out = model(input_ids, segment_ids)
+        for epoch in range(args.num_epochs):
+            model.train()
+            for b in range(len(train_data_loader)):
+                blob_confs = train_data_loader.get_batch()
 
-            
-            pt_loss = layer_distill(args, student_sequence_out,teacher_sequence_out)
-            ds_loss = pred_distill(args, student_logits, teacher_logits)
-            loss_ce = of_cross_entropy(student_logits, label_ids)
+                # oneflow train
+                start_t = time.time()
+                input_ids = blob_confs['input_ids'].to("cuda")
+                segment_ids = blob_confs['segment_ids'].to("cuda")
+                label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
 
-            loss_pkd = loss_ce * (1-args.kd_alpha) + args.kd_alpha * ds_loss + args.kd_beta * pt_loss
-            loss_pkd.backward()
-            of_sgd.step()
-            of_sgd.zero_grad()
-            end_t = time.time()
-            if b % print_interval == 0:
-                l = loss_pkd.numpy()[0]
-                of_losses.append(l)
-                print(
-                    "epoch {} train iter {} oneflow loss {}, train time : {}".format(
-                        epoch, b, l, end_t - start_t
+                student_logits, student_sequence_out, teacher_logits, teacher_sequence_out = model(input_ids, segment_ids)
+
+                
+                pt_loss = layer_distill(args, student_sequence_out,teacher_sequence_out)
+                ds_loss = pred_distill(args, student_logits, teacher_logits)
+                loss_ce = of_cross_entropy(student_logits, label_ids)
+
+                loss_pkd = loss_ce * (1-args.kd_alpha) + args.kd_alpha * ds_loss + args.kd_beta * pt_loss
+                loss_pkd.backward()
+                of_sgd.step()
+                of_sgd.zero_grad()
+                end_t = time.time()
+                if b % print_interval == 0:
+                    l = loss_pkd.numpy()[0]
+                    of_losses.append(l)
+                    print(
+                        "epoch {} train iter {} oneflow loss {}, train time : {}".format(
+                            epoch, b, l, end_t - start_t
+                        )
                     )
-                )
-        print('EvalTrainJob...')
-        eval(model,train_data_loader,desc = 'train')
-        print('EvalValJob...')
-        result = eval(model,eval_data_loader,desc = 'eval')
+                # print('EvalTrainJob...')
+                # eval(model,train_data_loader,desc = 'train')
+                print('EvalValJob...')
+                result = eval(model,eval_data_loader,desc = 'eval')
 
-        save_model = False
-        if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
-            best_dev_acc = result['accuracy']
-            save_model = True
+                save_model = False
+                if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
+                    best_dev_acc = result['accuracy']
+                    save_model = True
 
-        # if task_name in corr_tasks and result['corr'] > best_dev_acc:
-        #     best_dev_acc = result['corr']
-        #     save_model = True
+                # if task_name in corr_tasks and result['corr'] > best_dev_acc:
+                #     best_dev_acc = result['corr']
+                #     save_model = True
 
-        if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
-            best_dev_acc = result['matthews_corrcoef']
-            save_model = True
-            print('Best result:', result)
+                if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
+                    best_dev_acc = result['matthews_corrcoef']
+                    save_model = True
+                    print('Best result:', result)
 
-        if save_model:
-            if os.path.exists(args.model_save_dir):
-                import shutil
-                shutil.rmtree(args.model_save_dir)
-            if not os.path.exists(args.model_save_dir):
-                os.makedirs(args.model_save_dir)
-            snapshot_save_path = os.path.join(args.model_save_dir)
-            print("Saving best model to {}".format(snapshot_save_path))
-            flow.save(model.state_dict(),snapshot_save_path)
-            flow.sync_default_session()
+                if save_model:
+                    if os.path.exists(args.model_save_dir):
+                        import shutil
+                        shutil.rmtree(args.model_save_dir)
+                    if not os.path.exists(args.model_save_dir):
+                        os.makedirs(args.model_save_dir)
+                    snapshot_save_path = os.path.join(args.model_save_dir)
+                    print("Saving best model to {}".format(snapshot_save_path))
+                    flow.save(model.state_dict(),snapshot_save_path)
 
 
     if args.do_eval:
         print('Loading model...')
         print(args.model_save_dir)
-
         if not args.do_train:
-            flow.load(model,args.model_save_dir)
+            model_dict = flow.load(args.model_save_dir)
+            print('successful')
+            model.load_state_dict(model_dict)
         print('Evaluation...')
         result = eval(model,eval_data_loader,desc = 'eval')
 
