@@ -17,7 +17,7 @@ from data_util import OFRecordDataLoader
 from bert_model.bert import BERT
 from sklearn.metrics import accuracy_score, matthews_corrcoef, precision_score, recall_score, f1_score
 from util import getdirsize
-from knowledge_distill_util import layer_distill, pred_distill
+from knowledge_distill_util import layer_distill, pred_distill,att_distill
 def _parse_args():
 
     def str2bool(v):
@@ -35,14 +35,14 @@ def _parse_args():
     parser.add_argument("--total_model", default=None, type=str, help="The student model dir.")
 
     parser.add_argument('--num_epochs', type=int, default=3, help='number of epochs')
-    parser.add_argument("--train_data_dir", type=str, default='/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord_test/SST-2/train/')
+    parser.add_argument("--train_data_dir", type=str, default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/train/')
     parser.add_argument("--train_data_prefix", type=str, default='train.of_record-')
     parser.add_argument("--train_example_num", type=int, default=67349,
                         help="example number in dataset")
     parser.add_argument("--batch_size_per_device", type=int, default=8)
     parser.add_argument("--train_data_part_num", type=int, default=1,
                         help="data part number in dataset")
-    parser.add_argument("--eval_data_dir", type=str, default='/remote-home/rpluo/Oneflow-Model-Compression/model_compress/data/glue_ofrecord_test/SST-2/eval/')
+    parser.add_argument("--eval_data_dir", type=str, default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/eval/')
     parser.add_argument("--eval_data_prefix", type=str, default='eval.of_record-')
     parser.add_argument("--eval_example_num", type=int, default=872,
                         help="example number in dataset")
@@ -63,7 +63,7 @@ def _parse_args():
     parser.add_argument("--student_hidden_size", type=int, default=768)
 
     parser.add_argument("--teacher_num_hidden_layers", type=int, default=12)
-    parser.add_argument("--teacher_num_attention_heads", type=int, default=16)
+    parser.add_argument("--teacher_num_attention_heads", type=int, default=12)
     parser.add_argument("--teacher_max_position_embeddings", type=int, default=512)
     parser.add_argument("--teacher_type_vocab_size", type=int, default=2)
     parser.add_argument("--teacher_vocab_size", type=int, default=30522)
@@ -87,7 +87,7 @@ def _parse_args():
 
 
 
-class bert_pkd(nn.Module):
+class TinyBERT(nn.Module):
     def __init__(self,  student_vocab_size, 
                         student_hidden, 
                         student_n_layers, 
@@ -120,14 +120,14 @@ class bert_pkd(nn.Module):
         return student_logits
 
     def forward(self, x, segment_info):
-        student_output,student_sequence_out,_ = self.student_model(x,segment_info)
+        student_output,student_sequence_out,student_att_out = self.student_model(x,segment_info)
         student_output2 = self.student_output_layer(student_output[:,0])
         student_logits = self.student_softmax(student_output2)
 
-        teacher_output,teacher_sequence_out,_ = self.teacher_model(x,segment_info)
+        teacher_output,teacher_sequence_out,teacher_att_out = self.teacher_model(x,segment_info)
         teacher_output2 = self.teacher_output_layer(teacher_output[:,0])
         teacher_logits = self.teacher_softmax(teacher_output2)
-        return student_logits, student_sequence_out, teacher_logits, teacher_sequence_out
+        return student_logits, student_sequence_out, student_att_out,teacher_logits, teacher_sequence_out, teacher_att_out
 
 def eval(model, dataloader, desc = "train"):
     model.eval()
@@ -206,7 +206,7 @@ def main(args):
                                             args.seq_length,
                                             args.eval_data_prefix,
                                             args.eval_example_num)
-    model = bert_pkd(
+    model = TinyBERT(
                     args.student_vocab_size,
                     args.student_hidden_size,
                     args.student_num_hidden_layers,
@@ -244,20 +244,20 @@ def main(args):
                 segment_ids = blob_confs['segment_ids'].to("cuda")
                 label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
 
-                student_logits, student_sequence_out, teacher_logits, teacher_sequence_out = model(input_ids, segment_ids)
+                student_logits, student_sequence_out,student_atts, teacher_logits, teacher_sequence_out,teacher_atts = model(input_ids, segment_ids)
 
-                
-                pt_loss = layer_distill(args, student_sequence_out,teacher_sequence_out)
-                ds_loss = pred_distill(args, student_logits, teacher_logits)
-                loss_ce = of_cross_entropy(student_logits, label_ids)
+                rep_loss = layer_distill(args, student_sequence_out, teacher_sequence_out)
+                att_loss = att_distill(args, student_atts, teacher_atts)
+                cls_loss = pred_distill(args, student_logits, teacher_logits)
 
-                loss_pkd = loss_ce * (1-args.kd_alpha) + args.kd_alpha * ds_loss + args.kd_beta * pt_loss
-                loss_pkd.backward()
+
+                loss = rep_loss+att_loss+cls_loss
+                loss.backward()
                 of_sgd.step()
                 of_sgd.zero_grad()
                 end_t = time.time()
                 if b % print_interval == 0:
-                    l = loss_pkd.numpy()[0]
+                    l = loss.numpy()[0]
                     of_losses.append(l)
                     print(
                         "epoch {} train iter {} oneflow loss {}, train time : {}".format(
@@ -274,9 +274,9 @@ def main(args):
                 best_dev_acc = result['accuracy']
                 save_model = True
 
-            # if task_name in corr_tasks and result['corr'] > best_dev_acc:
-            #     best_dev_acc = result['corr']
-            #     save_model = True
+            if task_name in corr_tasks and result['corr'] > best_dev_acc:
+                best_dev_acc = result['corr']
+                save_model = True
 
             if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
                 best_dev_acc = result['matthews_corrcoef']

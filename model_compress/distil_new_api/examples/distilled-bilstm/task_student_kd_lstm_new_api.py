@@ -332,32 +332,32 @@ def main(args):
                     )
             # print('EvalTrainJob...')
             # eval(model,train_data_loader_lstm,desc = 'train')
-                print('EvalValJob...')
-                result = eval(model,eval_data_loader_lstm,desc = 'eval')
+            print('EvalValJob...')
+            result = eval(model,eval_data_loader_lstm,desc = 'eval')
 
-                save_model = False
-                if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
-                    best_dev_acc = result['accuracy']
-                    save_model = True
+            save_model = False
+            if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
+                best_dev_acc = result['accuracy']
+                save_model = True
 
-                # if task_name in corr_tasks and result['corr'] > best_dev_acc:
-                #     best_dev_acc = result['corr']
-                #     save_model = True
+            # if task_name in corr_tasks and result['corr'] > best_dev_acc:
+            #     best_dev_acc = result['corr']
+            #     save_model = True
 
-                if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
-                    best_dev_acc = result['matthews_corrcoef']
-                    save_model = True
-                    print('Best result:', result)
+            if task_name in mcc_tasks and result['matthews_corrcoef'] > best_dev_acc:
+                best_dev_acc = result['matthews_corrcoef']
+                save_model = True
+                print('Best result:', result)
 
-                if save_model:
-                    if os.path.exists(args.model_save_dir):
-                        import shutil
-                        shutil.rmtree(args.model_save_dir)
-                    if not os.path.exists(args.model_save_dir):
-                        os.makedirs(args.model_save_dir)
-                    snapshot_save_path = os.path.join(args.model_save_dir)
-                    print("Saving best model to {}".format(snapshot_save_path))
-                    flow.save(model.state_dict(),snapshot_save_path)
+            if save_model:
+                if os.path.exists(args.model_save_dir):
+                    import shutil
+                    shutil.rmtree(args.model_save_dir)
+                if not os.path.exists(args.model_save_dir):
+                    os.makedirs(args.model_save_dir)
+                snapshot_save_path = os.path.join(args.model_save_dir)
+                print("Saving best model to {}".format(snapshot_save_path))
+                flow.save(model.state_dict(),snapshot_save_path)
 
 
     if args.do_eval:
