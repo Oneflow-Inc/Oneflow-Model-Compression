@@ -39,8 +39,8 @@ def get_parser(parser=None):
 
     parser = argparse.ArgumentParser(description="flags for bert")
 
-    parser.add_argument('--do_train', type=str2bool, nargs='?', const=True, help='train or not')
-    parser.add_argument('--do_eval', type=str2bool, nargs='?', const=True, help='eval or not')
+    parser.add_argument('--do_train', type=str2bool, nargs='?',default=True, const=True, help='train or not')
+    parser.add_argument('--do_eval', type=str2bool, nargs='?',default=False, const=True, help='eval or not')
     # resouce
     parser.add_argument("--model", type=str, default='BERT Pretrain')
     parser.add_argument("--gpu_num_per_node", type=int, default=1)
@@ -64,8 +64,9 @@ def get_parser(parser=None):
         help="print loss every n iteration")
     parser.add_argument("--model_save_every_n_iter", type=int, default=10000, required=False,
         help="save model every n iteration",)
+    #"./output/model_save-{}".format(str(datetime.now().strftime("%Y-%m-%d-%H:%M:%S")))
     parser.add_argument("--model_save_dir", type=str,
-        default="./output/model_save-{}".format(str(datetime.now().strftime("%Y-%m-%d-%H:%M:%S"))),
+        default='./output/model_save-2021-07-27-04:28:12',
         required=False, help="model save directory")
     parser.add_argument("--save_last_snapshot", type=bool, default=False, required=False,
         help="save model snapshot for last iteration")

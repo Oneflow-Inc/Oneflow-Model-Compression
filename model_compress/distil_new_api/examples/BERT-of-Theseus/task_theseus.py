@@ -1,0 +1,235 @@
+import oneflow.experimental as flow
+import argparse
+import numpy as np
+import os
+import time
+import sys
+import oneflow.nn as nn
+import json
+from tqdm import tqdm
+from modeling_theseus import TheseusForClassification
+
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "model_compress/distil_new_api/src")))
+curPath = os.path.abspath(os.path.dirname(__file__))
+rootPath = os.path.split(curPath)[0]
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "./src")))
+
+sys.path.extend(['../../src', '../../src/bert_model'])
+import config as configs
+from data_util import OFRecordDataLoader
+from sklearn.metrics import accuracy_score, matthews_corrcoef, precision_score, recall_score, f1_score
+from util import getdirsize
+
+
+def _parse_args():
+    def str2bool(v):
+        if v.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Unsupported value encountered.')
+
+    parser = configs.get_parser()
+    parser.add_argument("--task_name", type=str, default='sst-2')
+    parser.add_argument("--teacher_model", default=None, type=str, help="The teacher model dir.")
+    parser.add_argument("--student_model", default=None, type=str, help="The student model dir.")
+    parser.add_argument("--total_model", default=None, type=str, help="The student model dir.")
+
+    parser.add_argument('--num_epochs', type=int, default=3, help='number of epochs')
+    parser.add_argument("--train_data_dir", type=str,
+                        default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/train/')
+    parser.add_argument("--train_data_prefix", type=str, default='train.of_record-')
+    parser.add_argument("--train_example_num", type=int, default=67349,
+                        help="example number in dataset")
+    parser.add_argument("--batch_size_per_device", type=int, default=8)
+    parser.add_argument("--train_data_part_num", type=int, default=1,
+                        help="data part number in dataset")
+    parser.add_argument("--eval_data_dir", type=str,
+                        default='/remote-home/rpluo/oneflow-model-compression/model_compress/data/glue_ofrecord_test/SST-2/eval/')
+    parser.add_argument("--eval_data_prefix", type=str, default='eval.of_record-')
+    parser.add_argument("--eval_example_num", type=int, default=872,
+                        help="example number in dataset")
+    parser.add_argument("--eval_batch_size_per_device", type=int, default=16)
+    parser.add_argument("--eval_data_part_num", type=int, default=1,
+                        help="data part number in dataset")
+    parser.add_argument("--result_dir", type=str, default="", help="the save directory of results")
+
+    parser.add_argument("--student_num_hidden_layers", type=int, default=3)
+    parser.add_argument("--replacing_rate", type=float, default=0.8)
+
+    parser.add_argument('--serve_for_online', type=str2bool, nargs='?', const=False,
+                        help='if serve for online, then after training, will delete the teacher params and optimizer parmas from model_save_dir')
+
+    return parser.parse_args()
+
+
+def eval(model, dataloader, desc="train"):
+    model.eval()
+    labels = []
+    predictions = []
+    start_time = time.time()
+    with flow.no_grad():
+        for b in tqdm(range(len(dataloader))):
+            blob_confs = dataloader.get_batch()
+            input_ids = blob_confs['input_ids'].to("cuda")
+            segment_ids = blob_confs['segment_ids'].to("cuda")
+            label_ids = blob_confs['label_ids'].squeeze(-1)
+            student_logits = model.forward(input_ids, segment_ids, training=False)
+            predictions.extend(student_logits.detach().to('cpu').numpy().argmax(axis=1).tolist())
+            labels.extend(label_ids.tolist())
+    end_time = time.time()
+    cost_time = end_time - start_time
+    print('cost time: {} s'.format(cost_time))
+
+    model_size = getdirsize(args.model_save_dir)
+    print('model_size: %d Mbytes' % (model_size / 1024 / 1024))  # Mbytes
+
+    accuracy = accuracy_score(labels, predictions)
+    mcc = matthews_corrcoef(labels, predictions)
+    precision = precision_score(labels, predictions)
+    recall = recall_score(labels, predictions)
+    f_1 = f1_score(labels, predictions)
+    save_dict = {"accuracy": "%.2f" % accuracy,
+                 "MCC": "%.2f" % mcc,
+                 "precision": "%.2f" % precision,
+                 "recall": "%.2f" % recall,
+                 "f_1": "%.2f" % f_1,
+                 "modelSize": "%d" % (model_size / 1024 / 1024),
+                 "reasoningTime": "%.2f" % (args.eval_example_num / cost_time)}  # sample/second
+
+    if args.result_dir == "":
+        args.result_dir = args.model_save_dir
+    if not os.path.exists(args.result_dir):
+        os.makedirs(args.result_dir)
+    with open(os.path.join(args.result_dir, 'results_{}.json'.format(desc)), "w") as f:
+        json.dump(save_dict, f)
+
+    def metric_fn(predictions, labels):
+        return {
+            "accuracy": accuracy,
+            "matthews_corrcoef": mcc,
+            "precision": precision,
+            "recall": recall,
+            "f1": f_1,
+        }
+
+    metric_dict = metric_fn(predictions, labels)
+    print(desc, ', '.join('{}: {:.3f}'.format(k, v) for k, v in metric_dict.items()))
+    return metric_dict
+
+
+def main(args):
+    acc_tasks = ["mnli", "mrpc", "sst-2", "qqp", "qnli", "rte"]
+    corr_tasks = ["sts-b"]
+    mcc_tasks = ["cola"]
+
+    task_name = args.task_name.lower()
+    # flow.enable_eager_execution()
+    # flow.InitEagerGlobalSession()
+
+    train_data_loader = OFRecordDataLoader(args.train_data_dir,
+                                           args.batch_size_per_device,
+                                           args.train_data_part_num,
+                                           args.seq_length,
+                                           args.train_data_prefix,
+                                           args.train_example_num)
+
+    eval_data_loader = OFRecordDataLoader(args.eval_data_dir,
+                                          args.eval_batch_size_per_device,
+                                          args.eval_data_part_num,
+                                          args.seq_length,
+                                          args.eval_data_prefix,
+                                          args.eval_example_num)
+    model = TheseusForClassification(
+        vocab_size=args.vocab_size, 
+        hidden=args.hidden_size, 
+        n_layers=args.num_hidden_layers, 
+        attn_heads=args.num_attention_heads,
+        dropout=args.hidden_dropout_prob,
+        student_n_layers=args.student_num_hidden_layers,
+    )
+
+    model.to('cuda')
+
+    if not os.path.exists(args.model_save_dir):
+        os.makedirs(args.model_save_dir)
+    if args.do_train:
+        model.encoder.set_replacing_rate(args.replacing_rate)
+
+        of_cross_entropy = flow.nn.CrossEntropyLoss(reduction='mean')
+        of_cross_entropy.to("cuda")
+        of_sgd = flow.optim.SGD(
+            model.parameters(), lr=args.learning_rate)
+        of_losses = []
+
+        print_interval = 10
+        print('start training......')
+
+        best_dev_acc = 0.0
+
+        for epoch in range(args.num_epochs):
+            model.train()
+            for b in range(len(train_data_loader)):
+                blob_confs = train_data_loader.get_batch()
+                # oneflow train
+                start_t = time.time()
+                input_ids = blob_confs['input_ids'].to("cuda")
+                segment_ids = blob_confs['segment_ids'].to("cuda")
+                label_ids = blob_confs['label_ids'].squeeze(-1).to("cuda")
+                student_logits, teacher_logits = model(input_ids, segment_ids)
+                loss = loss_ce = of_cross_entropy(student_logits, label_ids)
+                loss.backward()
+                of_sgd.step()
+                of_sgd.zero_grad()
+                end_t = time.time()
+                if b % print_interval == 0:
+                    l = loss.numpy()
+                    of_losses.append(l)
+                    print("epoch {} train iter {}\{} oneflow loss {}, train time : {}".format(
+                            epoch, b, len(train_data_loader), l, end_t - start_t
+                        )
+                    )
+            # print('EvalTrainJob...')
+            # eval(model,train_data_loader,desc = 'train')
+            print('EvalValJob...')
+            result = eval(model, eval_data_loader, desc='eval')
+
+            save_model = False
+            if task_name in acc_tasks and result['accuracy'] > best_dev_acc:
+                best_dev_acc = result['accuracy']
+                save_model = True
+
+            # if task_name in corr_tasks and result['corr'] > best_dev_acc:
+            #     best_dev_acc = result['corr']
+            #     save_model = True
+
+            if task_name in mcc_tasks and result['matthews_corrcoef'] >= best_dev_acc:
+                best_dev_acc = result['matthews_corrcoef']
+                save_model = True
+                print('Best result:', result)
+
+            if save_model:
+                if os.path.exists(args.model_save_dir):
+                    import shutil
+                    shutil.rmtree(args.model_save_dir)
+                if not os.path.exists(args.model_save_dir):
+                    os.makedirs(args.model_save_dir)
+                snapshot_save_path = os.path.join(args.model_save_dir)
+                print("Saving best model to {}".format(snapshot_save_path))
+                flow.save(model.state_dict(), snapshot_save_path)
+
+    if args.do_eval:
+        print('Loading model...')
+        print(args.model_save_dir)
+        if not args.do_train:
+            model_dict = flow.load(args.model_save_dir)
+            print('successful')
+            model.load_state_dict(model_dict)
+        print('Evaluation...')
+        result = eval(model, eval_data_loader, desc='eval')
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+    main(args)

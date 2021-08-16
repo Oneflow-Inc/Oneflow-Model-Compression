@@ -8,23 +8,7 @@ from transformer import TransformerBlock
 from embedding.bert import BERTEmbedding
 import numpy as np
 import oneflow.experimental as flow
-'''
---seq_length=128 \
-  --student_num_hidden_layers=4 \
-  --student_num_attention_heads=12 \
-  --student_vocab_size=30522 \
-  --student_hidden_size=312 \
 
-  --teacher_num_hidden_layers=12 \
-  --teacher_num_attention_heads=12 \
-  --teacher_max_position_embeddings=512 \
-  --teacher_type_vocab_size=2 \ 
-  --teacher_vocab_size=30522 \
-  --teacher_attention_probs_dropout_prob=0.1 \
-  --teacher_hidden_dropout_prob=0.1 \
-  --teacher_hidden_size_per_head=64 \
-  --teacher_hidden_size=768 \
-      '''
 class BERT(nn.Module):
     """
     BERT model : Bidirectional Encoder Representations from Transformers.
